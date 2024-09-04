@@ -50,6 +50,7 @@ dioxus-core = { version = "0.5" }
 dioxus-hot-reload = { version = "0.5", features = ["file_watcher"], default-features = false }
 dioxus-router = { version = "0.5", default-features = false }
 dioxus-sdk = { version = "0.5", features = ["clipboard"]}
+dioxus-logger = { version = "0.5" }
 
 skia-safe = { version = "0.75.0", features = ["gl", "textlayout", "svg"] }
 
@@ -84,6 +85,8 @@ serde = "1.0.189"
 dioxus-i18n = "0.2.2"
 rand = "0.8.5"
 dioxus-router = { workspace = true }
+dioxus-logger = { workspace = true }
+
 itertools = "0.13.0"
 home = "0.5.9"
 dioxus-query = "0.5.1"
@@ -93,3 +96,5 @@ gl = { workspace = true }
 [profile.release]
 lto = true
 opt-level = 3
+[dependencies]
+log = "0.4.22"

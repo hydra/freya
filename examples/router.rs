@@ -3,14 +3,15 @@
     windows_subsystem = "windows"
 )]
 
-use dioxus_router::prelude::{
-    Outlet,
-    Routable,
-    Router,
-};
+use dioxus_router::prelude::{Outlet, Routable, Router, use_route};
+use dioxus_logger::tracing::{info, Level};
 use freya::prelude::*;
 
 fn main() {
+
+    dioxus_logger::init(Level::DEBUG).expect("failed to init logger");
+
+
     launch_with_props(app, "Router Example", (550.0, 400.0));
 }
 
