@@ -23,8 +23,8 @@ fn app() -> Element {
 #[rustfmt::skip]
 pub enum Route {
     #[layout(AppSidebar)]
-        #[route("/")]
-        Home,
+        //#[route("/")]
+        //Home,
         #[route("/wow")]
         Wow,
     #[end_layout]
@@ -38,18 +38,18 @@ fn AppSidebar() -> Element {
         NativeRouter {
             Sidebar {
                 sidebar: rsx!(
-                    Link {
-                        to: Route::Home,
-                        ActivableRoute {
-                            route: Route::Home,
-                            exact: true,
-                            SidebarItem {
-                                label {
-                                    "Go to Hey ! 👋"
-                                }
-                            },
-                        }
-                    },
+                    // Link {
+                    //     to: Route::Home,
+                    //     ActivableRoute {
+                    //         route: Route::Home,
+                    //         exact: true,
+                    //         SidebarItem {
+                    //             label {
+                    //                 "Go to Hey ! 👋"
+                    //             }
+                    //         },
+                    //     }
+                    // },
                     Link {
                         to: Route::Wow,
                         ActivableRoute {
@@ -95,6 +95,10 @@ fn Home() -> Element {
 #[allow(non_snake_case)]
 #[component]
 fn Wow() -> Element {
+
+    let path: Route = use_route();
+    info!("path: {}", path);
+
     rsx!(
         label {
             "Just more text 👈!! in /wow"
