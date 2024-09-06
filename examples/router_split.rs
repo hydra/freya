@@ -235,9 +235,7 @@ mod document {
         println!("DocumentLayout. id: {:?}", id);
 
         use_effect(use_reactive!(|route| {
-            let mut map = DOCUMENTS_ROUTER.read().clone();
-            map.insert(id(), route);
-            *DOCUMENTS_ROUTER.write_unchecked() = map;
+            DOCUMENTS_ROUTER.write_unchecked().insert(id().clone(), route);
             println!("UPDATED");
         }));
 
