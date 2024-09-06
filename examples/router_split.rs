@@ -3,8 +3,8 @@
     windows_subsystem = "windows"
 )]
 
-use std::collections::HashMap;
 use freya::prelude::*;
+use std::collections::HashMap;
 
 fn main() {
     launch_with_props(app, "Split Routing Example", (550.0, 400.0));
@@ -15,25 +15,37 @@ struct Document {
     content: String,
 }
 
-// FIXME Temporarily using a `static mut` and unsafe code, maybe use once_cell or similar for this example
-static mut DOCUMENTS: Option<HashMap<String, Document>> = None;
+static DOCUMENTS: GlobalSignal<HashMap<String, Document>> =
+    GlobalSignal::new(|| HashMap::default());
 
 pub fn load_documents() {
     let map = HashMap::from([
-        ("document_1".to_string(), Document { name: "Document 1".to_string(), content: "Content 1".to_string() }),
-        ("document_2".to_string(), Document { name: "Document 2".to_string(), content: "Content 2".to_string() }),
+        (
+            "document_1".to_string(),
+            Document {
+                name: "Document 1".to_string(),
+                content: "Content 1".to_string(),
+            },
+        ),
+        (
+            "document_2".to_string(),
+            Document {
+                name: "Document 2".to_string(),
+                content: "Content 2".to_string(),
+            },
+        ),
     ]);
 
-    unsafe { DOCUMENTS.replace(map); }
+    *DOCUMENTS.write_unchecked() = map;
 }
 
 fn app() -> Element {
+    use_hook(|| {
+        // Initialize the documents when the app is started
+        load_documents();
+    });
 
-    load_documents();
-
-    rsx!(
-        tabbed_ui::TabContainer { }
-    )
+    rsx!(tabbed_ui::TabContainer {})
 }
 
 mod tabbed_ui {
@@ -62,25 +74,18 @@ mod tabbed_ui {
     #[allow(non_snake_case)]
     #[component]
     pub fn TabContainer() -> Element {
-
-        let _document_ids = use_context_provider(|| {
-            let document_ids: Vec<(String, String)> = unsafe { DOCUMENTS.as_ref().unwrap() }.iter().map(|(key, value)|{
-                (key.clone(), value.name.clone())
-            }).collect();
-            Signal::new(document_ids)
-        });
-
-        rsx!(
-            Router::<TabsRoute> {}
-        )
+        rsx!(Router::<TabsRoute> {})
     }
 
     #[allow(non_snake_case)]
     #[component]
     fn TabLayout() -> Element {
-        let document_ids_signal: Signal<Vec<(String, String)>> = use_context();
-        let document_ids = document_ids_signal.read();
-        let mut sorted_document_ids = document_ids.clone();
+        let mut sorted_document_ids = DOCUMENTS
+            .read()
+            .iter()
+            .map(|(key, doc)| (key.clone(), doc.name.clone()))
+            .collect::<Vec<(String, String)>>()
+            .clone();
         sorted_document_ids.sort();
 
         rsx!(
@@ -101,12 +106,12 @@ mod tabbed_ui {
                                 }
                             }
                         },
-                        for (id, name) in sorted_document_ids.iter() {
+                        for (id, name) in sorted_document_ids {
                             Link {
                                 key: "{id.clone()}",
                                 to: TabsRoute::DocumentTab { id: id.clone() },
                                 ActivableRoute {
-                                    route: TabsRoute::DocumentTab { id: id.clone() },
+                                    route: TabsRoute::DocumentTab { id },
                                     Tab {
                                         label {
                                             "{name}"
@@ -135,9 +140,7 @@ mod tabbed_ui {
     fn DocumentTab(id: String) -> Element {
         println!("DocumentTab. id: {}", id);
 
-        rsx!(
-            DocumentContainer { id }
-        )
+        rsx!(DocumentContainer { id })
     }
 
     #[allow(non_snake_case)]
@@ -165,25 +168,40 @@ mod tabbed_ui {
 /// Document UI - should have know knowledge or dependencies on the tabbed UI
 ///
 mod document {
-    use dioxus_router::{hooks::use_route, prelude::{Outlet, Routable, Router, RouterConfig}};
-    use freya::prelude::*;
-    use crate::{DOCUMENTS};
+    use std::ops::Deref;
 
-    static DOCUMENTS_ROUTER: GlobalSignal<Option<DocumentRoute>> = GlobalSignal::new(|| None);
+    use crate::DOCUMENTS;
+    use dioxus_router::{
+        hooks::use_route,
+        prelude::{Outlet, Routable, Router, RouterConfig},
+    };
+    use freya::prelude::*;
+
+    static DOCUMENTS_ROUTER: GlobalSignal<DocumentRoute> =
+        GlobalSignal::new(|| DocumentRoute::DocumentOverview);
 
     #[derive(Routable, Clone, PartialEq)]
     #[rustfmt::skip]
     enum DocumentRoute {
-        #[nest("/:id")]
-            #[layout(DocumentLayout)]
+        #[layout(DocumentLayout)]
             #[route("/")]
-            DocumentOverview { id: String },
+            DocumentOverview,
             #[route("/content")]
-            DocumentContent { id: String },
-            #[end_layout]
-        #[end_nest]
+            DocumentContent,
+        #[end_layout]
         #[route("/..route")]
         DocumentPageNotFound {},
+    }
+
+    #[derive(Clone, PartialEq, Debug)]
+    struct ActiveDocumentId(pub String);
+
+    impl Deref for ActiveDocumentId {
+        type Target = String;
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
     }
 
     /// Note: this is the ONLY public function
@@ -192,45 +210,28 @@ mod document {
     pub fn DocumentContainer(id: String) -> Element {
         println!("DocumentContainer. id: {}", id);
 
-        // Use a signal to store the id, so it can be used by DocumentContent and DocumentOverview
-        let id_signal = use_context_provider(|| Signal::new(id.clone()));
+        let active_id = use_memo(use_reactive(&id, |id| ActiveDocumentId(id)));
 
-        // Update the signal with a potentially new id.
-        let id = match id_signal() {
-            id_from_signal if id.ne(&id_from_signal) => {
-                println!("id from signal is different. id: {}, id_from_signal: {}", &id, &id_from_signal);
-                id.clone()
-            },
-            id_from_signal => {
-                println!("id from signal is the same. id: {}, id_from_signal: {}", &id, &id_from_signal);
-                id_from_signal.clone()
-            }
-        };
-
-        let id_for_hook = id.clone();
-        use_effect(move || {
-            let mut id_signal: Signal<String> = use_context();
-            id_signal.set(id_for_hook.clone());
+        use_context_provider(|| {
+            let signal: ReadOnlySignal<ActiveDocumentId> = active_id.into();
+            signal
         });
 
-        *DOCUMENTS_ROUTER.write_unchecked() = Some(DocumentRoute::DocumentOverview { id: id.clone() });
-
-        rsx!(
-            Router::<DocumentRoute> {
-                config: || RouterConfig::default().initial_route(DOCUMENTS_ROUTER().unwrap())
-            }
-        )
+        rsx!(Router::<DocumentRoute> {
+            config: || RouterConfig::default().initial_route(DOCUMENTS_ROUTER())
+        })
     }
 
     #[allow(non_snake_case)]
     #[component]
-    fn DocumentLayout(id: String) -> Element {
+    fn DocumentLayout() -> Element {
         let route = use_route::<DocumentRoute>();
+        let id = use_context::<ReadOnlySignal<ActiveDocumentId>>();
 
-        println!("DocumentLayout. id: {}", id);
+        println!("DocumentLayout. id: {:?}", id);
 
         use_effect(use_reactive!(|route| {
-            *DOCUMENTS_ROUTER.write_unchecked() = Some(route);
+            *DOCUMENTS_ROUTER.write_unchecked() = route;
             println!("UPDATED");
         }));
 
@@ -239,9 +240,9 @@ mod document {
                 Sidebar {
                     sidebar: rsx!(
                         Link {
-                            to: DocumentRoute::DocumentOverview { id: id.clone() },
+                            to: DocumentRoute::DocumentOverview,
                             ActivableRoute {
-                                route: DocumentRoute::DocumentOverview { id: id.clone() },
+                                route: DocumentRoute::DocumentOverview,
                                 exact: true,
                                 SidebarItem {
                                     label {
@@ -251,9 +252,9 @@ mod document {
                             }
                         },
                         Link {
-                            to: DocumentRoute::DocumentContent { id: id.clone() },
+                            to: DocumentRoute::DocumentContent,
                             ActivableRoute {
-                                route: DocumentRoute::DocumentContent { id: id.clone() },
+                                route: DocumentRoute::DocumentContent,
                                 SidebarItem {
                                     label {
                                         "Content"
@@ -278,40 +279,35 @@ mod document {
 
     #[allow(non_snake_case)]
     #[component]
-    fn DocumentOverview(id: String) -> Element {
-        println!("DocumentOverview. id: {}", id);
+    fn DocumentOverview() -> Element {
+        let id = use_context::<ReadOnlySignal<ActiveDocumentId>>();
+        println!("DocumentOverview. id: {:?} !!!", id);
 
         rsx!(
             label {
-                "Overview. (path: '/', id: {id:})"
+                "Overview. (path: '/', id: {id:?}) !"
             }
         )
     }
 
     #[allow(non_snake_case)]
     #[component]
-    fn DocumentContent(id: String) -> Element {
-        println!("DocumentContent. id: {}", id);
+    fn DocumentContent() -> Element {
+        let id = use_context::<ReadOnlySignal<ActiveDocumentId>>();
 
-        let document_resource = use_resource(move || {
-            let id = id.clone();
-            async move {
-                // FIXME: Using a static mut (but in read-only mode and which is only written once on app startup)
-                let result = unsafe { DOCUMENTS.as_ref().unwrap().get(&id) };
+        println!("DocumentContent. id: {:?}", id);
 
-                result
-            }
-        });
-        let document = document_resource.read();
+        let documents = DOCUMENTS.read();
+        let document = documents.get(&id.read().0);
 
-        match &*document {
-            Some(Some(document)) => {
+        match document {
+            Some(document) => {
                 rsx!(
                     label {
                         { format!("{}", document.content)}
                     }
                 )
-            },
+            }
             _ => {
                 rsx!(
                     label {
