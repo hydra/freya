@@ -168,6 +168,8 @@ mod tabbed_ui {
 /// Document UI - should have know knowledge or dependencies on the tabbed UI
 ///
 mod document {
+    use std::collections::HashMap;
+    use std::fmt::{Display, Formatter};
     use std::ops::Deref;
 
     use crate::DOCUMENTS;
@@ -177,8 +179,8 @@ mod document {
     };
     use freya::prelude::*;
 
-    static DOCUMENTS_ROUTER: GlobalSignal<DocumentRoute> =
-        GlobalSignal::new(|| DocumentRoute::DocumentOverview);
+    static DOCUMENT_ROUTE: GlobalSignal<HashMap<ActiveDocumentId, DocumentRoute>> =
+        GlobalSignal::new(|| HashMap::new());
 
     #[derive(Routable, Clone, PartialEq)]
     #[rustfmt::skip]
@@ -193,7 +195,7 @@ mod document {
         DocumentPageNotFound {},
     }
 
-    #[derive(Clone, PartialEq, Debug)]
+    #[derive(Clone, PartialEq, Debug, Eq, Hash)]
     struct ActiveDocumentId(pub String);
 
     impl Deref for ActiveDocumentId {
@@ -201,6 +203,12 @@ mod document {
 
         fn deref(&self) -> &Self::Target {
             &self.0
+        }
+    }
+
+    impl Display for ActiveDocumentId {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{}", self.0)
         }
     }
 
@@ -212,28 +220,42 @@ mod document {
 
         let active_id = use_memo(use_reactive(&id, |id| ActiveDocumentId(id)));
 
+        // let last_route = DOCUMENT_ROUTE().get(&ActiveDocumentId(id.clone()))
+        //     .cloned()
+        //     .unwrap_or(DocumentRoute::DocumentOverview);
+
         use_context_provider(|| {
             let signal: ReadOnlySignal<ActiveDocumentId> = active_id.into();
             signal
         });
 
         rsx!(Router::<DocumentRoute> {
-            config: || RouterConfig::default().initial_route(DOCUMENTS_ROUTER())
+            //config: move || RouterConfig::default().initial_route(last_route.clone())
+            config: move || RouterConfig::default().initial_route(DocumentRoute::DocumentOverview)
         })
     }
 
     #[allow(non_snake_case)]
     #[component]
     fn DocumentLayout() -> Element {
-        let route = use_route::<DocumentRoute>();
         let id = use_context::<ReadOnlySignal<ActiveDocumentId>>();
 
-        println!("DocumentLayout. id: {:?}", id);
+        println!("DocumentLayout. id: {}", id);
 
-        use_effect(use_reactive!(|route| {
-            *DOCUMENTS_ROUTER.write_unchecked() = route;
-            println!("UPDATED");
-        }));
+        // let route = use_route::<DocumentRoute>();
+        // use_effect(use_reactive!(|route| {
+        //     *DOCUMENTS_ROUTER.write_unchecked() = route;
+        //     println!("UPDATED");
+        // }));
+
+        use_effect(move || {
+
+            let route = use_route::<DocumentRoute>();
+
+            let mut map = DOCUMENT_ROUTE();
+            map.insert(id(), route.clone());
+            *DOCUMENT_ROUTE.write() = map;
+        });
 
         rsx!(
             NativeRouter {
@@ -281,11 +303,11 @@ mod document {
     #[component]
     fn DocumentOverview() -> Element {
         let id = use_context::<ReadOnlySignal<ActiveDocumentId>>();
-        println!("DocumentOverview. id: {:?} !!!", id);
+        println!("DocumentOverview. id: {}", id);
 
         rsx!(
             label {
-                "Overview. (path: '/', id: {id:?}) !"
+                "Overview. (path: '/', id: {id:})"
             }
         )
     }
@@ -295,7 +317,7 @@ mod document {
     fn DocumentContent() -> Element {
         let id = use_context::<ReadOnlySignal<ActiveDocumentId>>();
 
-        println!("DocumentContent. id: {:?}", id);
+        println!("DocumentContent. id: {}", id);
 
         let documents = DOCUMENTS.read();
         let document = documents.get(&id.read().0);
