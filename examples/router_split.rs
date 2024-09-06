@@ -168,6 +168,7 @@ mod tabbed_ui {
 /// Document UI - should have know knowledge or dependencies on the tabbed UI
 ///
 mod document {
+    use std::collections::HashMap;
     use std::ops::Deref;
 
     use crate::DOCUMENTS;
@@ -177,8 +178,8 @@ mod document {
     };
     use freya::prelude::*;
 
-    static DOCUMENTS_ROUTER: GlobalSignal<DocumentRoute> =
-        GlobalSignal::new(|| DocumentRoute::DocumentOverview);
+    static DOCUMENTS_ROUTER: GlobalSignal<HashMap<ActiveDocumentId, DocumentRoute>> =
+        GlobalSignal::new(|| HashMap::new());
 
     #[derive(Routable, Clone, PartialEq)]
     #[rustfmt::skip]
@@ -193,7 +194,7 @@ mod document {
         DocumentPageNotFound {},
     }
 
-    #[derive(Clone, PartialEq, Debug)]
+    #[derive(Clone, PartialEq, Debug, Eq, Hash)]
     struct ActiveDocumentId(pub String);
 
     impl Deref for ActiveDocumentId {
@@ -218,7 +219,10 @@ mod document {
         });
 
         rsx!(Router::<DocumentRoute> {
-            config: || RouterConfig::default().initial_route(DOCUMENTS_ROUTER())
+            config: move || RouterConfig::default().initial_route(DOCUMENTS_ROUTER()
+                .get(&active_id())
+                .cloned()
+                .unwrap_or(DocumentRoute::DocumentOverview))
         })
     }
 
@@ -231,7 +235,9 @@ mod document {
         println!("DocumentLayout. id: {:?}", id);
 
         use_effect(use_reactive!(|route| {
-            *DOCUMENTS_ROUTER.write_unchecked() = route;
+            let mut map = DOCUMENTS_ROUTER.read().clone();
+            map.insert(id(), route);
+            *DOCUMENTS_ROUTER.write_unchecked() = map;
             println!("UPDATED");
         }));
 
