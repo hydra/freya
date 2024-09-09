@@ -165,7 +165,7 @@ mod tabbed_ui {
 }
 
 ///
-/// Document UI - should have know knowledge or dependencies on the tabbed UI
+/// Document UI - should have no knowledge or dependencies on the tabbed UI
 ///
 mod document {
     use std::collections::HashMap;
