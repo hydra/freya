@@ -182,7 +182,7 @@ mod document {
     static DOCUMENTS_ROUTER: GlobalSignal<HashMap<ActiveDocumentId, DocumentRoute>> =
         GlobalSignal::new(|| HashMap::new());
 
-    #[derive(Routable, Clone, PartialEq)]
+    #[derive(Routable, Clone, PartialEq, Debug)]
     #[rustfmt::skip]
     enum DocumentRoute {
         #[layout(DocumentLayout)]
@@ -212,13 +212,28 @@ mod document {
         }
     }
 
+    fn store_active_route() {
+        use_effect(use_reactive!(|| {
+            let route = use_route::<DocumentRoute>();
+            let id = use_context::<ReadOnlySignal<ActiveDocumentId>>();
+
+            println!("update_active_route. id: {}, route: {}", &id, &route);
+
+            DOCUMENTS_ROUTER.write_unchecked().insert(id().clone(), route);
+        }));
+    }
+
     /// Note: this is the ONLY public function
     #[allow(non_snake_case)]
     #[component]
     pub fn DocumentContainer(id: String) -> Element {
         println!("DocumentContainer. id: {}", id);
 
-        let active_id = use_memo(use_reactive(&id, |id| ActiveDocumentId(id)));
+        let active_id = use_memo(use_reactive(&id, |id| {
+            println!("use_reactive: id: {}", id);
+
+            ActiveDocumentId(id)
+        }));
 
         use_context_provider(|| {
             let signal: ReadOnlySignal<ActiveDocumentId> = active_id.into();
@@ -226,26 +241,23 @@ mod document {
         });
 
         rsx!(Router::<DocumentRoute> {
-            config: move || RouterConfig::default().initial_route(DOCUMENTS_ROUTER()
-                .get(&active_id())
-                .cloned()
-                .unwrap_or(DocumentRoute::DocumentOverview))
+            config: move || {
+                let default_route = DOCUMENTS_ROUTER()
+                    .get(&active_id())
+                    .cloned()
+                    .inspect(|route| println!("DocumentContainer. using existing route. route: {:?}", route))
+                    .unwrap_or(DocumentRoute::DocumentOverview);
+
+                println!("DocumentContainer. default_route: {:?}", &default_route);
+
+                RouterConfig::default().initial_route(default_route.clone())
+            }
         })
     }
 
     #[allow(non_snake_case)]
     #[component]
     fn DocumentLayout() -> Element {
-        let route = use_route::<DocumentRoute>();
-        let id = use_context::<ReadOnlySignal<ActiveDocumentId>>();
-
-        println!("DocumentLayout. id: {}", id);
-
-        use_effect(use_reactive!(|route| {
-            DOCUMENTS_ROUTER.write_unchecked().insert(id().clone(), route);
-            println!("UPDATED");
-        }));
-
         rsx!(
             NativeRouter {
                 Sidebar {
@@ -291,6 +303,8 @@ mod document {
     #[allow(non_snake_case)]
     #[component]
     fn DocumentOverview() -> Element {
+        store_active_route();
+
         let id = use_context::<ReadOnlySignal<ActiveDocumentId>>();
         println!("DocumentOverview. id: {}", id);
 
@@ -304,6 +318,8 @@ mod document {
     #[allow(non_snake_case)]
     #[component]
     fn DocumentContent() -> Element {
+        store_active_route();
+
         let id = use_context::<ReadOnlySignal<ActiveDocumentId>>();
 
         println!("DocumentContent. id: {}", id);
