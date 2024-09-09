@@ -169,6 +169,7 @@ mod tabbed_ui {
 ///
 mod document {
     use std::collections::HashMap;
+    use std::fmt::{Display, Formatter};
     use std::ops::Deref;
 
     use crate::DOCUMENTS;
@@ -205,6 +206,12 @@ mod document {
         }
     }
 
+    impl Display for ActiveDocumentId {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{}", self.0)
+        }
+    }
+
     /// Note: this is the ONLY public function
     #[allow(non_snake_case)]
     #[component]
@@ -232,7 +239,7 @@ mod document {
         let route = use_route::<DocumentRoute>();
         let id = use_context::<ReadOnlySignal<ActiveDocumentId>>();
 
-        println!("DocumentLayout. id: {:?}", id);
+        println!("DocumentLayout. id: {}", id);
 
         use_effect(use_reactive!(|route| {
             DOCUMENTS_ROUTER.write_unchecked().insert(id().clone(), route);
@@ -285,11 +292,11 @@ mod document {
     #[component]
     fn DocumentOverview() -> Element {
         let id = use_context::<ReadOnlySignal<ActiveDocumentId>>();
-        println!("DocumentOverview. id: {:?} !!!", id);
+        println!("DocumentOverview. id: {}", id);
 
         rsx!(
             label {
-                "Overview. (path: '/', id: {id:?}) !"
+                "Overview. (path: '/', id: {id:})"
             }
         )
     }
@@ -299,7 +306,7 @@ mod document {
     fn DocumentContent() -> Element {
         let id = use_context::<ReadOnlySignal<ActiveDocumentId>>();
 
-        println!("DocumentContent. id: {:?}", id);
+        println!("DocumentContent. id: {}", id);
 
         let documents = DOCUMENTS.read();
         let document = documents.get(&id.read().0);
